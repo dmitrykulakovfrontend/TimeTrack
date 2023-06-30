@@ -6,6 +6,13 @@ import { Result as CurrentProcess } from 'active-win'
 const api = {
   getCurrentProcess: (): Promise<CurrentProcess | undefined> => {
     return ipcRenderer.invoke('getCurrentProcess')
+  },
+  getData: async (): Promise<string> => {
+    const data = await ipcRenderer.invoke('getData')
+    return data
+  },
+  setData: async (data): Promise<boolean> => {
+    return await ipcRenderer.invoke('setData', data)
   }
 }
 

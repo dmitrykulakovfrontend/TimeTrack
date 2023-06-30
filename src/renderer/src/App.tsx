@@ -17,9 +17,17 @@ function App(): JSX.Element {
     [processOwnerName: string]: Process
   }
 
-  const [fakeDB, setFakeDB] = useState<FakeDBState>({})
+  const [db, setDb] = useState<FakeDBState>()
   let timer
   useEffect(() => {
+    async function getDb(): Promise<void> {
+      const data = JSON.parse(await window.api.getData())
+      setDb(data)
+    }
+    if (!db) {
+      getDb()
+      return
+    }
     timer = setInterval(async () => {
       const process = await window.api.getCurrentProcess()
       if (!process) {
@@ -27,7 +35,8 @@ function App(): JSX.Element {
         return
       }
       const { title, owner } = process
-      setFakeDB((prev) => {
+      setDb((prev) => {
+        if (!prev) return
         const existingProcess = prev[owner.name]
         const existingSubprocess = existingProcess?.[title]
         if (typeof existingSubprocess === 'number') {
@@ -50,8 +59,45 @@ function App(): JSX.Element {
       clearInterval(timer)
     }
   }, [])
-  console.log(fakeDB)
-  return <div className="flex justify-center items-center min-h-screen">Test</div>
+  useEffect(() => {
+    async function testDB(): Promise<void> {
+      const response = await window.api.setData(db)
+      console.log({ response })
+      const data = JSON.parse(await window.api.getData())
+      console.log({ data })
+    }
+    if (!db) return
+    testDB()
+  }, [db])
+  return (
+    <div className="flex items-center justify-center min-h-screen">
+      <ul>
+        {Object.entries(db || {})
+          .sort((a, b) => b[1].seconds - a[1].seconds)
+          .map(([ownerName, process]) =>
+            ownerName === 'seconds' ? null : (
+              <li className="ml-2" key={ownerName}>
+                <div>
+                  {ownerName} - {process.seconds} seconds
+                </div>
+
+                {typeof process === 'number' ? null : (
+                  <ul>
+                    {Object.entries(process).map(([title, subProcess]) =>
+                      title === 'seconds' ? null : (
+                        <li className="ml-4" key={title}>
+                          {title.slice(0, 40)} - {subProcess?.seconds} seconds
+                        </li>
+                      )
+                    )}
+                  </ul>
+                )}
+              </li>
+            )
+          )}
+      </ul>
+    </div>
+  )
 }
 
 export default App

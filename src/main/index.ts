@@ -1,9 +1,9 @@
 import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
+import { mkdir, readFile, writeFile } from 'fs/promises'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import getCurrentProcess from 'active-win'
-
 function createWindow(): void {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
@@ -45,6 +45,35 @@ app.whenReady().then(() => {
 
   ipcMain.handle('getCurrentProcess', () => {
     return getCurrentProcess()
+  })
+
+  ipcMain.handle('getData', async () => {
+    try {
+      const data = await readFile(join('data', 'timespent.json'), { encoding: 'utf-8' })
+      return data
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+        await mkdir('data')
+        await writeFile(join('data', 'timespent.json'), '{}')
+      }
+      return {}
+    }
+  })
+
+  ipcMain.handle('setData', async (event, data) => {
+    try {
+      await writeFile(join('data', 'timespent.json'), JSON.stringify(data))
+      return true
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+        await mkdir('data')
+        await writeFile(join('data', 'timespent.json'), '{}')
+        return true
+      } else {
+        console.log(error)
+        return false
+      }
+    }
   })
 
   // Default open or close DevTools by F12 in development
