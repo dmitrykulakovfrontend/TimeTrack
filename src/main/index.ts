@@ -53,7 +53,7 @@ app.whenReady().then(() => {
       return data
     } catch (error) {
       if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
-        await mkdir('data')
+        await mkdir('data', { recursive: true })
         await writeFile(join('data', 'timespent.json'), '{}')
       }
       return {}
@@ -66,7 +66,7 @@ app.whenReady().then(() => {
       return true
     } catch (error) {
       if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
-        await mkdir('data')
+        await mkdir('data', { recursive: true })
         await writeFile(join('data', 'timespent.json'), '{}')
         return true
       } else {
