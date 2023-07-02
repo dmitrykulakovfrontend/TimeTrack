@@ -2,6 +2,8 @@
 // import icons from './assets/icons.svg'
 // import { Result as CurrentProcess } from 'active-win'
 import { useEffect, useState } from 'react'
+import { Duration } from 'luxon'
+import pluralize from 'pluralize'
 
 function App(): JSX.Element {
   type Process = {
@@ -30,18 +32,20 @@ function App(): JSX.Element {
       getDb()
       return
     }
-    console.log(1)
     timer = setInterval(async () => {
       const process = await window.api.getCurrentProcess()
+      console.log('process: ', process)
       if (!process) {
-        console.error('no process owner name: ', process)
+        console.error('no process: ', process)
         return
       }
       const { title, owner } = process
+      const formattedTitle = formatProcessName(title, owner.name)
+
       setDB((prev) => {
         if (!prev) return
         const existingProcess = prev[owner.name]
-        const existingSubprocess = existingProcess?.subprocesses[title]
+        const existingSubprocess = existingProcess?.subprocesses[formattedTitle]
         return {
           ...prev,
           [owner.name]: {
@@ -49,8 +53,8 @@ function App(): JSX.Element {
             seconds: existingProcess?.seconds + 1 || 1,
             subprocesses: {
               ...existingProcess?.subprocesses,
-              [title]: {
-                title,
+              [formattedTitle]: {
+                title: formattedTitle,
                 seconds: existingSubprocess?.seconds + 1 || 1
               }
             }
@@ -64,10 +68,7 @@ function App(): JSX.Element {
   }, [DB])
   useEffect(() => {
     async function testDB(): Promise<void> {
-      const response = await window.api.setData(DB)
-      console.log({ response })
-      const data = JSON.parse(await window.api.getData())
-      console.log({ data })
+      await window.api.setData(DB)
     }
     if (!DB) return
     testDB()
@@ -76,22 +77,22 @@ function App(): JSX.Element {
     <div className="flex items-center justify-center min-h-screen">
       <ul>
         {Object.values(DB || {})
-          .filter((p) => p.seconds > 10)
+          // .filter((p) => p.seconds > 10)
           .sort((a, b) => b.seconds - a.seconds)
           .map(({ owner, seconds, subprocesses }) => (
             <li className="ml-2" key={owner}>
               <div>
-                {displayName(owner)} - {seconds} seconds
+                {displayName(owner)} - {formatTime(seconds)}
               </div>
 
               {
                 <ul>
                   {Object.values(subprocesses)
-                    .filter((p) => p.seconds > 10)
+                    // .filter((p) => p.seconds > 10)
                     .sort((a, b) => b.seconds - a.seconds)
                     .map(({ title, seconds }) => (
                       <li className="ml-4" key={title}>
-                        {displayName(title)} - {seconds} seconds
+                        {displayName(title)} - {formatTime(seconds)}
                       </li>
                     ))}
                 </ul>
@@ -103,10 +104,44 @@ function App(): JSX.Element {
   )
 }
 
+function formatProcessName(name: string, owner: string): string {
+  switch (owner) {
+    case 'Microsoft Edge':
+      return /(^.+)and \d+/.exec(name)?.[1] || name
+    case 'Visual Studio Code':
+      return name.replace(/●/g, '').trim()
+
+    default:
+      return name
+  }
+}
+
 function displayName(name: string): string {
-  if (name.length > 40) {
-    return name.slice(0, 40) + '...'
+  if (name.length > 120) {
+    return name.slice(0, 120) + '...'
   } else return name
+}
+function formatTime(duration: number): string {
+  const luxonDuration = Duration.fromObject({ seconds: duration })
+
+  const hours = luxonDuration.as('hours') >= 1 ? Math.floor(luxonDuration.as('hours')) : 0
+  const minutes =
+    luxonDuration.as('minutes') >= 1 ? Math.floor(luxonDuration.as('minutes')) % 60 : 0
+  const seconds = luxonDuration.as('seconds') % 60
+
+  let formattedTime = ''
+
+  if (hours > 0) {
+    formattedTime += `${hours} ${pluralize('hour', hours)}, `
+  }
+
+  if (minutes > 0 || hours > 0) {
+    formattedTime += `${minutes} ${pluralize('minute', minutes)}, `
+  }
+
+  formattedTime += `${seconds} ${pluralize('second', seconds)}`
+
+  return formattedTime
 }
 
 export default App

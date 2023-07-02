@@ -62,7 +62,7 @@ app.whenReady().then(() => {
         await mkdir('data', { recursive: true })
         await writeFile(join('data', 'timespent.json'), '{}')
       }
-      return {}
+      return '{}'
     }
   })
 
