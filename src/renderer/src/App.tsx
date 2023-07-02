@@ -1,6 +1,6 @@
-import Versions from './components/Versions'
-import icons from './assets/icons.svg'
-import { Result as CurrentProcess } from 'active-win'
+// import Versions from './components/Versions'
+// import icons from './assets/icons.svg'
+// import { Result as CurrentProcess } from 'active-win'
 import { useEffect, useState } from 'react'
 
 function App(): JSX.Element {
@@ -76,20 +76,24 @@ function App(): JSX.Element {
     <div className="flex items-center justify-center min-h-screen">
       <ul>
         {Object.values(DB || {})
+          .filter((p) => p.seconds > 10)
           .sort((a, b) => b.seconds - a.seconds)
           .map(({ owner, seconds, subprocesses }) => (
             <li className="ml-2" key={owner}>
               <div>
-                {owner} - {seconds} seconds
+                {displayName(owner)} - {seconds} seconds
               </div>
 
               {
                 <ul>
-                  {Object.values(subprocesses).map(({ title, seconds }) => (
-                    <li className="ml-4" key={title}>
-                      {title} - {seconds} seconds
-                    </li>
-                  ))}
+                  {Object.values(subprocesses)
+                    .filter((p) => p.seconds > 10)
+                    .sort((a, b) => b.seconds - a.seconds)
+                    .map(({ title, seconds }) => (
+                      <li className="ml-4" key={title}>
+                        {displayName(title)} - {seconds} seconds
+                      </li>
+                    ))}
                 </ul>
               }
             </li>
@@ -97,6 +101,12 @@ function App(): JSX.Element {
       </ul>
     </div>
   )
+}
+
+function displayName(name: string): string {
+  if (name.length > 40) {
+    return name.slice(0, 40) + '...'
+  } else return name
 }
 
 export default App

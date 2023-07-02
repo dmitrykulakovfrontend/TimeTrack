@@ -1,15 +1,18 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, screen } from 'electron'
 import { join } from 'path'
 import { mkdir, readFile, writeFile } from 'fs/promises'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import getCurrentProcess from 'active-win'
+
 function createWindow(): void {
+  const { width, height } = screen.getPrimaryDisplay().workAreaSize
   // Create the browser window.
   const mainWindow = new BrowserWindow({
-    width: 900,
-    height: 670,
+    width,
+    height,
     show: false,
+    center: true,
     autoHideMenuBar: is.dev ? false : true,
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
@@ -42,7 +45,10 @@ function createWindow(): void {
 app.whenReady().then(() => {
   // Set app user model id for windows
   electronApp.setAppUserModelId('com.electron')
-
+  app.setLoginItemSettings({
+    openAtLogin: true,
+    openAsHidden: true
+  })
   ipcMain.handle('getCurrentProcess', () => {
     return getCurrentProcess()
   })
@@ -60,7 +66,7 @@ app.whenReady().then(() => {
     }
   })
 
-  ipcMain.handle('setData', async (event, data) => {
+  ipcMain.handle('setData', async (_, data) => {
     try {
       await writeFile(join('data', 'timespent.json'), JSON.stringify(data))
       return true
