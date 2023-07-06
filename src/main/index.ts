@@ -13,7 +13,9 @@ function createWindow(): void {
     height,
     show: false,
     center: true,
-    autoHideMenuBar: is.dev ? false : true,
+    autoHideMenuBar: false,
+
+    // autoHideMenuBar: is.dev ? false : true,
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -38,11 +40,13 @@ function createWindow(): void {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
 }
-
+let timer: NodeJS.Timeout | null = null
+let previousProcess: getCurrentProcess.Result | undefined = undefined
+let data: DB | undefined = undefined
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   // Set app user model id for windows
   electronApp.setAppUserModelId('com.electron')
   app.setLoginItemSettings({
@@ -54,32 +58,68 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('getData', async () => {
-    try {
-      const data = await readFile(join('data', 'timespent.json'), { encoding: 'utf-8' })
-      return data
-    } catch (error) {
-      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
-        await mkdir('data', { recursive: true })
-        await writeFile(join('data', 'timespent.json'), '{}')
-      }
-      return '{}'
-    }
+    return await getData()
   })
 
   ipcMain.handle('setData', async (_, data) => {
-    try {
-      await writeFile(join('data', 'timespent.json'), JSON.stringify(data))
-      return true
-    } catch (error) {
-      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
-        await mkdir('data', { recursive: true })
-        await writeFile(join('data', 'timespent.json'), '{}')
-        return true
-      } else {
-        console.log(error)
-        return false
-      }
+    return await setData(data)
+  })
+  ipcMain.handle('startTracking', () => {
+    if (timer) {
+      clearInterval(timer)
     }
+    timer = setInterval(async () => {
+      if (!data) {
+        return
+      }
+      let process = await getCurrentProcess()
+      if (!process) {
+        process = previousProcess
+      }
+      previousProcess = process
+      if (!process) return
+      const { owner, title } = process
+      const formattedTitle = formatProcessName(title, owner.name)
+      const todayDate = new Date().toDateString()
+      const todayData = data.find((day) => day.date === todayDate)
+      if (!todayData) {
+        data.push({
+          date: todayDate,
+          processes: {
+            [owner.name]: {
+              owner: owner.name,
+              seconds: 1,
+              subprocesses: {
+                [formattedTitle]: {
+                  title: formattedTitle,
+                  seconds: 1
+                }
+              }
+            }
+          }
+        })
+        await setData(data)
+        return
+      }
+      const existingProcess = todayData.processes?.[owner.name]
+      const existingSubprocess = existingProcess?.subprocesses[formattedTitle]
+      todayData.processes[owner.name] = {
+        owner: owner.name,
+        seconds: existingProcess?.seconds + 1 || 1,
+        subprocesses: {
+          ...existingProcess?.subprocesses,
+          [formattedTitle]: {
+            title: formattedTitle,
+            seconds: existingSubprocess?.seconds + 1 || 1
+          }
+        }
+      }
+      await setData(data)
+    }, 1000)
+  })
+  ipcMain.handle('stopTracking', () => {
+    timer && clearInterval(timer)
+    timer = null
   })
 
   // Default open or close DevTools by F12 in development
@@ -90,6 +130,7 @@ app.whenReady().then(() => {
   })
 
   createWindow()
+  data = JSON.parse(await getData())
 
   app.on('activate', function () {
     // On macOS it's common to re-create a window in the app when the
@@ -109,3 +150,58 @@ app.on('window-all-closed', () => {
 
 // In this file you can include the rest of your app"s specific main process
 // code. You can also put them in separate files and require them here.
+
+async function getData(): Promise<string> {
+  try {
+    return await readFile(join('data', 'timespent.json'), { encoding: 'utf-8' })
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+      await mkdir('data', { recursive: true })
+      await writeFile(join('data', 'timespent.json'), '[]')
+    }
+    return '[]'
+  }
+}
+async function setData(data: DB): Promise<boolean> {
+  try {
+    await writeFile(join('data', 'timespent.json'), JSON.stringify(data))
+    return true
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+      await mkdir('data', { recursive: true })
+      await writeFile(join('data', 'timespent.json'), '[]')
+      return true
+    } else {
+      console.log(error)
+      return false
+    }
+  }
+}
+export function formatProcessName(name: string, owner: string): string {
+  switch (owner) {
+    case 'Microsoft Edge':
+      return /(^.+)and \d+/.exec(name)?.[1] || name
+    case 'Visual Studio Code':
+      return name.replace(/●/g, '').trim()
+
+    default:
+      return name
+  }
+}
+export type Process = {
+  seconds: number
+  owner: string
+  subprocesses: {
+    [title: string]: {
+      seconds: number
+      title: string
+    }
+  }
+}
+
+export type DB = {
+  date: string
+  processes: {
+    [processOwnerName: string]: Process
+  }
+}[]

@@ -22,10 +22,17 @@
   "dependencies": {
     "@electron-toolkit/preload": "^2.0.0",
     "@electron-toolkit/utils": "^1.0.2",
+    "@emotion/react": "^11.11.1",
+    "@emotion/styled": "^11.11.0",
+    "@fontsource/roboto": "^5.0.4",
+    "@mui/icons-material": "^5.13.7",
+    "@mui/material": "^5.13.7",
     "active-win": "^8.1.0",
     "electron-updater": "^5.3.0",
     "luxon": "^3.3.0",
-    "pluralize": "^8.0.0"
+    "pluralize": "^8.0.0",
+    "react-router-dom": "^6.14.1",
+    "recharts": "^2.7.2"
   },
   "devDependencies": {
     "@electron-toolkit/tsconfig": "^1.0.1",

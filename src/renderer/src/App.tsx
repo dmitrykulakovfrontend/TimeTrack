@@ -4,77 +4,48 @@
 import { useEffect, useState } from 'react'
 import { Duration } from 'luxon'
 import pluralize from 'pluralize'
-
-function App(): JSX.Element {
-  type Process = {
-    seconds: number
-    owner: string
-    subprocesses: {
-      [title: string]: {
-        seconds: number
-        title: string
-      }
+import Slider from '@mui/material/Slider'
+export type Process = {
+  seconds: number
+  owner: string
+  subprocesses: {
+    [title: string]: {
+      seconds: number
+      title: string
     }
   }
+}
 
-  type DB = {
+export type DB = {
+  date: string
+  processes: {
     [processOwnerName: string]: Process
   }
+}[]
 
-  const [DB, setDB] = useState<DB>()
+function App(): JSX.Element {
+  const [DB, setDB] = useState<{
+    [processOwnerName: string]: Process
+  }>()
   let timer
   useEffect(() => {
+    window.api.startTracking()
     async function getDb(): Promise<void> {
       const data = JSON.parse(await window.api.getData())
-      setDB(data)
+      const today = data.find((i) => i.date === new Date().toDateString()).processes
+      setDB(today)
     }
-    if (!DB) {
-      getDb()
-      return
-    }
-    timer = setInterval(async () => {
-      const process = await window.api.getCurrentProcess()
-      console.log('process: ', process)
-      if (!process) {
-        console.error('no process: ', process)
-        return
-      }
-      const { title, owner } = process
-      const formattedTitle = formatProcessName(title, owner.name)
-
-      setDB((prev) => {
-        if (!prev) return
-        const existingProcess = prev[owner.name]
-        const existingSubprocess = existingProcess?.subprocesses[formattedTitle]
-        return {
-          ...prev,
-          [owner.name]: {
-            owner: owner.name,
-            seconds: existingProcess?.seconds + 1 || 1,
-            subprocesses: {
-              ...existingProcess?.subprocesses,
-              [formattedTitle]: {
-                title: formattedTitle,
-                seconds: existingSubprocess?.seconds + 1 || 1
-              }
-            }
-          }
-        }
-      })
-    }, 1000)
+    getDb()
+    timer = setInterval(getDb, 1000)
     return () => {
       clearInterval(timer)
     }
-  }, [DB])
-  useEffect(() => {
-    async function testDB(): Promise<void> {
-      await window.api.setData(DB)
-    }
-    if (!DB) return
-    testDB()
-  }, [DB])
+  }, [])
+  console.log(DB)
   return (
-    <div className="flex items-center justify-center min-h-screen">
+    <div className="flex flex-col items-center justify-center min-h-screen">
+      <Slider defaultValue={50} max={100} min={0} />
+      <Slider defaultValue={30} className="text-teal-600" />
       <ul>
         {Object.values(DB || {})
           // .filter((p) => p.seconds > 10)
@@ -102,18 +73,6 @@ function App(): JSX.Element {
       </ul>
     </div>
   )
-}
-
-function formatProcessName(name: string, owner: string): string {
-  switch (owner) {
-    case 'Microsoft Edge':
-      return /(^.+)and \d+/.exec(name)?.[1] || name
-    case 'Visual Studio Code':
-      return name.replace(/●/g, '').trim()
-
-    default:
-      return name
-  }
 }
 
 function displayName(name: string): string {

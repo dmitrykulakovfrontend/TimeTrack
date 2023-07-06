@@ -13,6 +13,12 @@ const api = {
   },
   setData: async (data): Promise<boolean> => {
     return await ipcRenderer.invoke('setData', data)
+  },
+  startTracking: (): void => {
+    ipcRenderer.invoke('startTracking')
+  },
+  stopTracking: (): void => {
+    ipcRenderer.invoke('stopTracking')
   }
 }
 
