@@ -4,6 +4,7 @@ import { mkdir, readFile, writeFile } from 'fs/promises'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import getCurrentProcess from 'active-win'
+import type { DB } from '../types/data'
 
 function createWindow(): void {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize
@@ -150,26 +151,30 @@ app.on('window-all-closed', () => {
 
 // In this file you can include the rest of your app"s specific main process
 // code. You can also put them in separate files and require them here.
+const pathToData = is.dev
+  ? join(__dirname, '../../', 'data', 'timespent.json')
+  : join(__dirname, 'data', 'timespent.json')
 
+const pathToDirectoryData = is.dev ? join(__dirname, '../../', 'data') : join(__dirname, 'data')
 async function getData(): Promise<string> {
   try {
-    return await readFile(join('data', 'timespent.json'), { encoding: 'utf-8' })
+    return await readFile(pathToData, { encoding: 'utf-8' })
   } catch (error) {
     if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
-      await mkdir('data', { recursive: true })
-      await writeFile(join('data', 'timespent.json'), '[]')
+      await mkdir(pathToDirectoryData, { recursive: true })
+      await writeFile(pathToData, '[]')
     }
     return '[]'
   }
 }
 async function setData(data: DB): Promise<boolean> {
   try {
-    await writeFile(join('data', 'timespent.json'), JSON.stringify(data))
+    await writeFile(pathToData, JSON.stringify(data))
     return true
   } catch (error) {
     if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
-      await mkdir('data', { recursive: true })
-      await writeFile(join('data', 'timespent.json'), '[]')
+      await mkdir(pathToDirectoryData, { recursive: true })
+      await writeFile(pathToData, '[]')
       return true
     } else {
       console.log(error)
@@ -177,6 +182,7 @@ async function setData(data: DB): Promise<boolean> {
     }
   }
 }
+console.log({ dir: __dirname })
 export function formatProcessName(name: string, owner: string): string {
   switch (owner) {
     case 'Microsoft Edge':
@@ -188,20 +194,3 @@ export function formatProcessName(name: string, owner: string): string {
       return name
   }
 }
-export type Process = {
-  seconds: number
-  owner: string
-  subprocesses: {
-    [title: string]: {
-      seconds: number
-      title: string
-    }
-  }
-}
-
-export type DB = {
-  date: string
-  processes: {
-    [processOwnerName: string]: Process
-  }
-}[]

@@ -4,7 +4,7 @@ import App from './App'
 import CssBaseline from '@mui/material/CssBaseline'
 import { HashRouter, Route, Routes } from 'react-router-dom'
 import { createTheme, StyledEngineProvider, ThemeProvider } from '@mui/material/styles'
-
+import '@fontsource/poppins'
 const root = document.getElementById('root') as HTMLElement
 
 const theme = createTheme({
