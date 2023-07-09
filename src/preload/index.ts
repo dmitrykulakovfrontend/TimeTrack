@@ -19,6 +19,9 @@ const api = {
   },
   stopTracking: (): void => {
     ipcRenderer.invoke('stopTracking')
+  },
+  test: (): Promise<unknown> => {
+    return ipcRenderer.invoke('test')
   }
 }
 

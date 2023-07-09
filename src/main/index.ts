@@ -65,6 +65,13 @@ app.whenReady().then(async () => {
   ipcMain.handle('setData', async (_, data) => {
     return await setData(data)
   })
+  ipcMain.handle('test', () => {
+    return {
+      dir: __dirname,
+      pathToData,
+      pathToDirectoryData
+    }
+  })
   ipcMain.handle('startTracking', () => {
     if (timer) {
       clearInterval(timer)
@@ -152,14 +159,15 @@ app.on('window-all-closed', () => {
 // In this file you can include the rest of your app"s specific main process
 // code. You can also put them in separate files and require them here.
 const pathToData = is.dev
-  ? join(__dirname, '../../', 'data', 'timespent.json')
-  : join(__dirname, 'data', 'timespent.json')
-
-const pathToDirectoryData = is.dev ? join(__dirname, '../../', 'data') : join(__dirname, 'data')
+  ? join(app.getAppPath(), 'data', 'timespent.json')
+  : join(app.getAppPath(), '../../data', 'timespent.json')
+const pathToDirectoryData = join(app.getAppPath(), '../../data')
 async function getData(): Promise<string> {
   try {
     return await readFile(pathToData, { encoding: 'utf-8' })
   } catch (error) {
+    console.log({ pathToDirectoryData, pathToData })
+    console.error(error)
     if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
       await mkdir(pathToDirectoryData, { recursive: true })
       await writeFile(pathToData, '[]')
@@ -172,6 +180,7 @@ async function setData(data: DB): Promise<boolean> {
     await writeFile(pathToData, JSON.stringify(data))
     return true
   } catch (error) {
+    console.error(error)
     if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
       await mkdir(pathToDirectoryData, { recursive: true })
       await writeFile(pathToData, '[]')
@@ -182,7 +191,6 @@ async function setData(data: DB): Promise<boolean> {
     }
   }
 }
-console.log({ dir: __dirname })
 export function formatProcessName(name: string, owner: string): string {
   switch (owner) {
     case 'Microsoft Edge':

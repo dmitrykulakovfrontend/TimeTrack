@@ -4,35 +4,83 @@
 import { useEffect, useState } from 'react'
 import { Duration } from 'luxon'
 import pluralize from 'pluralize'
-import Slider from '@mui/material/Slider'
-import { Process, DB } from '../../types/data'
-import { Card, Badge, Tooltip } from '@mui/material'
-
+import { DB, Process } from '../../types/data'
+import {
+  Card,
+  FormControl,
+  InputLabel,
+  MenuItem,
+  Select,
+  SelectChangeEvent,
+  Tooltip
+} from '@mui/material'
+import {
+  BarChart,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  Bar,
+  Tooltip as RechartsTooltip,
+  ResponsiveContainer
+} from 'recharts'
+export enum TimeRange {
+  Today = 'Today',
+  Yesterday = 'Yesterday',
+  Last7Days = 'Last 7 days',
+  Last30Days = 'Last 30 days'
+}
 function App(): JSX.Element {
   const [DB, setDB] = useState<DB>()
-  let timer
+  const [date, setDate] = useState<TimeRange>(TimeRange.Today)
+  const [isUpdating, setIsUpdating] = useState<boolean>(false)
+  const handleChange = (event: SelectChangeEvent): void => {
+    setDate(event.target.value as TimeRange)
+  }
+  let timer: NodeJS.Timeout
+  async function getDb(): Promise<void> {
+    window.api.test().then((res) => console.log(res))
+    const data = JSON.parse(await window.api.getData())
+    setDB(data)
+  }
   useEffect(() => {
     window.api.startTracking()
-    async function getDb(): Promise<void> {
-      const data = JSON.parse(await window.api.getData())
-      setDB(data)
-    }
     getDb()
     timer = setInterval(getDb, 1000)
     return () => {
       clearInterval(timer)
     }
   }, [])
-  const totalTime =
-    DB?.reduce((acc, cur) => {
-      const sum = Object.values(cur.processes).reduce((acc, cur) => acc + cur.seconds, 0)
-      return acc + sum
-    }, 0) || 1
-  const averagePerDay = +((totalTime || 1) / (DB?.length || 1)).toFixed(0)
+  useEffect(() => {
+    async function visualChange(): Promise<void> {
+      setIsUpdating(true)
+      await getDb()
+      setIsUpdating(false)
+    }
+    visualChange()
+  }, [date])
+  if (!DB || isUpdating) return <span>Loading...</span>
+  const selectedData = getSelectedData(DB, date).map((day) => {
+    const sortedProcesses = Object.entries(day.processes).sort(
+      (a, b) => b[1].seconds - a[1].seconds
+    )
+    return { ...day, processes: Object.fromEntries(sortedProcesses) }
+  })
+  const selectedTimeTotal = selectedData.reduce((acc, cur) => {
+    const sum = Object.values(cur.processes).reduce((acc, cur) => acc + cur.seconds, 0)
+    return acc + sum
+  }, 0)
+
+  const chartDataArray = mergeObjectsIntoProcessesArray(selectedData)
+  console.log({ chartDataArray, selectedData })
+  const chartData =
+    chartDataArray.length < 20
+      ? [...chartDataArray, ...Array(20 - chartDataArray.length).fill({ owner: '', seconds: 0 })]
+      : chartDataArray
+  const averagePerDay = +(selectedTimeTotal / selectedData.length).toFixed(0)
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen">
-      <div className="grid self-start grid-cols-2 p-8 max-md:grid-cols-1 w-fit gap-7">
-        <MuiCard
+    <div className="flex flex-col items-center justify-center min-h-screen p-8">
+      <div className="grid self-start grid-cols-2 max-md:grid-cols-1 w-fit gap-7">
+        {/* <MuiCard
           title="Productive time"
           tooltip="This indicator shows what percentage of time was spent on productive and neutral activities. The more the better."
           value="22%"
@@ -41,11 +89,11 @@ function App(): JSX.Element {
           title="Distracted time"
           tooltip="Time of unproductive activities"
           value={formatTime(13273699, true) + '  (78%)'}
-        />
+        /> */}
         <MuiCard
           title="Total time"
           tooltip="This indicator shows total time gathered by TimeTrack for selected time period."
-          value={formatTime(totalTime, true)}
+          value={formatTime(selectedTimeTotal, true)}
         />
         <MuiCard
           title="Per day"
@@ -53,32 +101,151 @@ function App(): JSX.Element {
           value={formatTime(averagePerDay, true)}
         />
       </div>
-      <ul>
-        {Object.values(DB?.find((i) => i.date === new Date().toDateString())?.processes || {})
-          // .filter((p) => p.seconds > 10)
-          .sort((a, b) => b.seconds - a.seconds)
-          .map(({ owner, seconds, subprocesses }) => (
-            <li className="ml-2" key={owner}>
-              <div>
-                {displayName(owner)} - {formatTime(seconds)}
-              </div>
-
-              {
-                <ul>
-                  {Object.values(subprocesses)
-                    // .filter((p) => p.seconds > 10)
-                    .sort((a, b) => b.seconds - a.seconds)
-                    .map(({ title, seconds }) => (
-                      <li className="ml-4" key={title}>
-                        {displayName(title)} - {formatTime(seconds)}
-                      </li>
-                    ))}
-                </ul>
+      <div className="w-full p-6 my-6 mr-auto bg-[#f8f8f8] rounded-lg">
+        <FormControl className="w-full max-w-xs">
+          <InputLabel className="text-xs font-bold font-poppins" id="dateLabel">
+            Date
+          </InputLabel>
+          <Select
+            labelId="dateLabel"
+            id="dateSelect"
+            className="bg-white "
+            slotProps={{
+              input: {
+                className: 'p-2'
+              },
+              root: {
+                className: 'w-[150px]'
               }
-            </li>
-          ))}
+            }}
+            value={date}
+            label="Date"
+            onChange={handleChange}
+          >
+            <MenuItem value={TimeRange.Today}>Today</MenuItem>
+            <MenuItem value={TimeRange.Yesterday}>Yesterday</MenuItem>
+            <MenuItem value={TimeRange.Last7Days}>Last 7 days</MenuItem>
+            <MenuItem value={TimeRange.Last30Days}>Last 30 days</MenuItem>
+          </Select>
+        </FormControl>
+      </div>
+      <div className="w-full p-6 border border-gray-300 border-solid rounded-lg shadow">
+        <h3 className="text-sm font-poppins">
+          Total time: <span className="text-green-500">{formatTime(selectedTimeTotal, true)}</span>
+        </h3>
+        <ResponsiveContainer width="100%" height={310}>
+          <BarChart height={200} data={chartData}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} />
+            <XAxis
+              tickLine={false}
+              axisLine={false}
+              interval={0}
+              tickCount={20}
+              height={110}
+              dataKey="owner"
+              tick={<CustomTick />}
+            />
+            <YAxis
+              tickLine={false}
+              axisLine={false}
+              fontSize={10}
+              fontFamily="Verdana"
+              tickFormatter={(value): string => formatTime(value, true)}
+            />
+            <RechartsTooltip
+              formatter={(duration): string[] => {
+                const value = formatTime(+duration, true)
+                return [
+                  +duration > 10 ? value : duration === 0 ? '' : duration + 's',
+                  duration === 0 ? 'Nothing there yet' : 'time'
+                ]
+              }}
+            />
+            <Bar dataKey="seconds" barSize={50} minPointSize={3} fill="#4bb063" />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+      <ul>
+        {chartDataArray.map(({ owner, seconds, subprocesses }) => (
+          <li className="ml-2" key={owner}>
+            <div>
+              {displayName(owner)} - {formatTime(seconds)}
+            </div>
+
+            {
+              <ul>
+                {Object.values(subprocesses)
+                  // .filter((p) => p.seconds > 10)
+                  .sort((a, b) => b.seconds - a.seconds)
+                  .map(({ title, seconds }) => (
+                    <li className="ml-4" key={title}>
+                      {displayName(title)} - {formatTime(seconds)}
+                    </li>
+                  ))}
+              </ul>
+            }
+          </li>
+        ))}
       </ul>
     </div>
+  )
+}
+function mergeObjectsIntoProcessesArray(objects: DB): Process[] {
+  const combinedProcesses: Process[] = []
+
+  for (const obj of objects) {
+    const { processes } = obj
+
+    for (const ownerName in processes) {
+      const seconds = processes[ownerName].seconds
+      const existingOwner = combinedProcesses.find((entry) => entry.owner === ownerName)
+
+      if (existingOwner) {
+        existingOwner.seconds += seconds
+      } else {
+        combinedProcesses.push(processes[ownerName])
+      }
+    }
+  }
+
+  return combinedProcesses
+}
+function getSelectedData(data: DB, timerange: TimeRange): DB {
+  const TODAY = new Date()
+  const YESTERDAY = new Date(Date.now() - 86400000)
+  const LAST_7_DAYS = new Date(Date.now() - 604800000)
+  const LAST_30_DAYS = new Date(Date.now() - 2592000000)
+  switch (timerange) {
+    case TimeRange.Today:
+      return data.filter((i) => i.date === new Date(TODAY).toDateString())
+    case TimeRange.Yesterday:
+      return data.filter((i) => i.date === new Date(YESTERDAY).toDateString())
+    case TimeRange.Last7Days:
+      return data.filter((i) => new Date(i.date) >= LAST_7_DAYS)
+    case TimeRange.Last30Days:
+      return data.filter((i) => new Date(i.date) >= LAST_30_DAYS)
+    default:
+      return data
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function CustomTick({ x, y, payload }: any): JSX.Element {
+  return (
+    <g transform={`translate(${x - 5},${y - 5})`}>
+      <text
+        x={0}
+        y={0}
+        dy={16}
+        textAnchor="end"
+        fontSize={10}
+        fontFamily="Poppins"
+        fill="#666"
+        transform="rotate(-50)"
+      >
+        {payload.value}
+      </text>
+    </g>
   )
 }
 
