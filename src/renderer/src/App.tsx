@@ -44,8 +44,8 @@ function App(): JSX.Element {
   }
   useEffect(() => {
     window.api.startTracking()
-    getDb()
     timer = setInterval(getDb, 1000)
+    getDb()
     return () => {
       clearInterval(timer)
     }
@@ -58,20 +58,23 @@ function App(): JSX.Element {
     }
     visualChange()
   }, [date])
-  if (!DB || isUpdating) return <span>Loading...</span>
-  const selectedData = getSelectedData(DB, date).map((day) => {
-    const sortedProcesses = Object.entries(day.processes).sort(
-      (a, b) => b[1].seconds - a[1].seconds
-    )
-    return { ...day, processes: Object.fromEntries(sortedProcesses) }
-  })
+  if (!DB || DB.length === 0 || isUpdating) return <span>Loading...</span>
+  console.log(DB)
+
+  const selectedData = getSelectedData(DB, date)
   const selectedTimeTotal = selectedData.reduce((acc, cur) => {
-    const sum = Object.values(cur.processes).reduce((acc, cur) => acc + cur.seconds, 0)
+    const sum = cur.processes.reduce((acc, cur) => acc + cur.seconds, 0)
     return acc + sum
   }, 0)
 
-  const chartDataArray = mergeObjectsIntoProcessesArray(selectedData)
-  console.log({ chartDataArray, selectedData })
+  const chartDataArray = mergeObjectsIntoProcessesArray(selectedData).sort(
+    (a, b) => b.seconds - a.seconds
+  )
+  console.log({
+    chartDataArray,
+    selectedData,
+    amount: Object.values(chartDataArray[2].subprocesses).length
+  })
   const chartData =
     chartDataArray.length < 20
       ? [...chartDataArray, ...Array(20 - chartDataArray.length).fill({ owner: '', seconds: 0 })]
@@ -134,7 +137,7 @@ function App(): JSX.Element {
           Total time: <span className="text-green-500">{formatTime(selectedTimeTotal, true)}</span>
         </h3>
         <ResponsiveContainer width="100%" height={310}>
-          <BarChart height={200} data={chartData}>
+          <BarChart height={200} data={chartData.slice(0, 20)}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} />
             <XAxis
               tickLine={false}
@@ -171,10 +174,9 @@ function App(): JSX.Element {
             <div>
               {displayName(owner)} - {formatTime(seconds)}
             </div>
-
             {
               <ul>
-                {Object.values(subprocesses)
+                {subprocesses
                   // .filter((p) => p.seconds > 10)
                   .sort((a, b) => b.seconds - a.seconds)
                   .map(({ title, seconds }) => (
@@ -196,18 +198,39 @@ function mergeObjectsIntoProcessesArray(objects: DB): Process[] {
   for (const obj of objects) {
     const { processes } = obj
 
-    for (const ownerName in processes) {
-      const seconds = processes[ownerName].seconds
-      const existingOwner = combinedProcesses.find((entry) => entry.owner === ownerName)
+    for (const { owner, seconds, subprocesses } of processes) {
+      const existingProcess = combinedProcesses.find((entry) => entry.owner === owner)
 
-      if (existingOwner) {
-        existingOwner.seconds += seconds
+      if (existingProcess) {
+        existingProcess.seconds += seconds
+        const previousSubprocesses = existingProcess.subprocesses
+        const mergedSubprocesses: {
+          seconds: number
+          title: string
+        }[] = []
+
+        for (const obj of previousSubprocesses) {
+          const matchingObj = subprocesses.find((subprocess) => subprocess.title === obj.title)
+          if (matchingObj) {
+            const mergedObj = { ...matchingObj, seconds: matchingObj.seconds + obj.seconds }
+            mergedSubprocesses.push(mergedObj)
+
+            const index = subprocesses.indexOf(matchingObj)
+            subprocesses.splice(index, 1)
+          } else {
+            mergedSubprocesses.push(obj)
+          }
+        }
+
+        // Add remaining objects from the second array
+        mergedSubprocesses.push(...subprocesses)
+        existingProcess.subprocesses = mergedSubprocesses
       } else {
-        combinedProcesses.push(processes[ownerName])
+        combinedProcesses.push({ owner, seconds, subprocesses })
       }
     }
   }
-
+  console.log({ combinedProcesses })
   return combinedProcesses
 }
 function getSelectedData(data: DB, timerange: TimeRange): DB {

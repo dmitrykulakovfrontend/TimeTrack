@@ -93,35 +93,50 @@ app.whenReady().then(async () => {
       if (!todayData) {
         data.push({
           date: todayDate,
-          processes: {
-            [owner.name]: {
+          processes: [
+            {
               owner: owner.name,
               seconds: 1,
-              subprocesses: {
-                [formattedTitle]: {
+              subprocesses: [
+                {
                   title: formattedTitle,
                   seconds: 1
                 }
-              }
+              ]
             }
-          }
+          ]
         })
         await setData(data)
         return
       }
-      const existingProcess = todayData.processes?.[owner.name]
-      const existingSubprocess = existingProcess?.subprocesses[formattedTitle]
-      todayData.processes[owner.name] = {
-        owner: owner.name,
-        seconds: existingProcess?.seconds + 1 || 1,
-        subprocesses: {
-          ...existingProcess?.subprocesses,
-          [formattedTitle]: {
-            title: formattedTitle,
-            seconds: existingSubprocess?.seconds + 1 || 1
-          }
-        }
+      const existingProcess = todayData.processes.find((process) => process.owner === owner.name)
+      if (!existingProcess) {
+        todayData.processes.push({
+          owner: owner.name,
+          seconds: 1,
+          subprocesses: [
+            {
+              title: formattedTitle,
+              seconds: 1
+            }
+          ]
+        })
+        await setData(data)
+        return
       }
+      const existingSubprocess = existingProcess.subprocesses.find(
+        (subprocess) => subprocess.title === formattedTitle
+      )
+      if (!existingSubprocess) {
+        existingProcess.subprocesses.push({
+          title: formattedTitle,
+          seconds: 1
+        })
+        await setData(data)
+        return
+      }
+      existingProcess.seconds++
+      existingSubprocess.seconds++
       await setData(data)
     }, 1000)
   })
