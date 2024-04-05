@@ -5,10 +5,14 @@ export type Process = {
   subprocesses: {
     seconds: number
     title: string
+    // for browsers supported by extension only
+    icon?: string | undefined
+    url?: string | undefined
+    hostname?: string | undefined
   }[]
 }
 
-export type DB = {
+export type TimeData = {
   date: string
   processes: Process[]
 }[]

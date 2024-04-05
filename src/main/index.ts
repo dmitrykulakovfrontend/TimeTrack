@@ -1,10 +1,28 @@
+/// <reference types="@types/firefox-webext-browser"/>
 import { app, shell, BrowserWindow, ipcMain, screen } from 'electron'
 import { join } from 'path'
 import { mkdir, readFile, writeFile } from 'fs/promises'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import getCurrentProcess from 'active-win'
-import type { DB } from '../types/data'
+import type { Process, TimeData } from '../types/data'
+import WebSocket, { WebSocketServer } from 'ws'
+import { hostname } from 'os'
+
+// Http server
+const wss = new WebSocketServer({ port: 9000 })
+
+wss.on('connection', (client) => {
+  console.log('Extension connected to app.')
+  client.send('Connection successfull')
+  client.on('close', () => {
+    console.log('Extension disconnected')
+  })
+  client.on('message', (data) => {
+    const tabData = JSON.parse(data.toString())
+    currentBrowserTab = tabData
+  })
+})
 
 function createWindow(): void {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize
@@ -43,7 +61,8 @@ function createWindow(): void {
 }
 let timer: NodeJS.Timeout | null = null
 let previousProcess: getCurrentProcess.Result | undefined = undefined
-let data: DB | undefined = undefined
+let data: TimeData | undefined
+let currentBrowserTab: browser.tabs.Tab | undefined
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
@@ -86,52 +105,35 @@ app.whenReady().then(async () => {
       }
       previousProcess = process
       if (!process) return
-      const { owner, title } = process
-      const formattedTitle = formatProcessName(title, owner.name)
       const todayDate = new Date().toDateString()
       const todayData = data.find((day) => day.date === todayDate)
       if (!todayData) {
         data.push({
           date: todayDate,
-          processes: [
-            {
-              owner: owner.name,
-              seconds: 1,
-              subprocesses: [
-                {
-                  title: formattedTitle,
-                  seconds: 1
-                }
-              ]
-            }
-          ]
+          processes: [createProcess(process) as Process]
         })
         await setData(data)
         return
       }
-      const existingProcess = todayData.processes.find((process) => process.owner === owner.name)
-      if (!existingProcess) {
-        todayData.processes.push({
-          owner: owner.name,
-          seconds: 1,
-          subprocesses: [
-            {
-              title: formattedTitle,
-              seconds: 1
-            }
-          ]
-        })
-        await setData(data)
-        return
-      }
-      const existingSubprocess = existingProcess.subprocesses.find(
-        (subprocess) => subprocess.title === formattedTitle
+      const existingProcess = todayData.processes.find(
+        (todayProcess) => todayProcess.owner === process.owner.name
       )
+      if (!existingProcess) {
+        todayData.processes.push(createProcess(process) as Process)
+        await setData(data)
+        return
+      }
+      const existingSubprocess = existingProcess.subprocesses.find((subprocess) => {
+        if (process.owner.name === 'Firefox' && currentBrowserTab) {
+          return subprocess.title === currentBrowserTab.title
+        } else {
+          return subprocess.title === process.title
+        }
+      })
       if (!existingSubprocess) {
-        existingProcess.subprocesses.push({
-          title: formattedTitle,
-          seconds: 1
-        })
+        existingProcess.subprocesses.push(
+          createProcess(process, 'subprocess') as Process['subprocesses'][number]
+        )
         await setData(data)
         return
       }
@@ -153,7 +155,7 @@ app.whenReady().then(async () => {
   })
 
   createWindow()
-  data = JSON.parse(await getData())
+  data = JSON.parse(await getData()) as TimeData
 
   app.on('activate', function () {
     // On macOS it's common to re-create a window in the app when the
@@ -161,6 +163,52 @@ app.whenReady().then(async () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
+
+function createProcess(
+  process: getCurrentProcess.Result,
+  type: 'process' | 'subprocess' = 'process'
+): Process | Process['subprocesses'][number] {
+  if (process.owner.name === 'Firefox' && currentBrowserTab) {
+    const tab = currentBrowserTab
+    return type === 'subprocess'
+      ? {
+          title: tab.title || '',
+          icon: tab.favIconUrl,
+          url: tab.url,
+          hostname: new URL(tab.url || '').hostname,
+          seconds: 1
+        }
+      : {
+          owner: process.owner.name,
+          seconds: 1,
+          subprocesses: [
+            {
+              title: tab.title || '',
+              icon: tab.favIconUrl,
+              url: tab.url,
+              hostname: new URL(tab.url || '').hostname,
+              seconds: 1
+            }
+          ]
+        }
+  } else if (process.owner.name === 'Firefox') {
+  }
+  return type === 'subprocess'
+    ? {
+        title: process.title,
+        seconds: 1
+      }
+    : {
+        owner: process.owner.name + (process.owner.name === 'Firefox' ? ' [No extension]' : ''),
+        seconds: 1,
+        subprocesses: [
+          {
+            title: process.title,
+            seconds: 1
+          }
+        ]
+      }
+}
 
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits
@@ -176,7 +224,7 @@ app.on('window-all-closed', () => {
 const pathToData = is.dev
   ? join(app.getAppPath(), 'data', 'timespent.json')
   : join(app.getAppPath(), '../../data', 'timespent.json')
-const pathToDirectoryData = join(app.getAppPath(), '../../data')
+const pathToDirectoryData = join(app.getAppPath(), is.dev ? 'data' : '../../data')
 async function getData(): Promise<string> {
   try {
     return await readFile(pathToData, { encoding: 'utf-8' })
@@ -184,13 +232,14 @@ async function getData(): Promise<string> {
     console.log({ pathToDirectoryData, pathToData })
     console.error(error)
     if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+      console.log({ pathToDirectoryData, pathToData, appPath: app.getAppPath() })
       await mkdir(pathToDirectoryData, { recursive: true })
       await writeFile(pathToData, '[]')
     }
     return '[]'
   }
 }
-async function setData(data: DB): Promise<boolean> {
+async function setData(data: TimeData): Promise<boolean> {
   try {
     await writeFile(pathToData, JSON.stringify(data))
     return true
@@ -204,16 +253,5 @@ async function setData(data: DB): Promise<boolean> {
       console.log(error)
       return false
     }
-  }
-}
-export function formatProcessName(name: string, owner: string): string {
-  switch (owner) {
-    case 'Microsoft Edge':
-      return /(^.+)and \d+/.exec(name)?.[1] || name
-    case 'Visual Studio Code':
-      return name.replace(/●/g, '').trim()
-
-    default:
-      return name
   }
 }

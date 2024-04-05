@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react'
 import { Duration } from 'luxon'
 import pluralize from 'pluralize'
-import { DB, Process } from '../../types/data'
+import { TimeData, Process } from '../../types/data'
 import {
   Card,
   FormControl,
@@ -30,22 +30,22 @@ export enum TimeRange {
   Last30Days = 'Last 30 days'
 }
 function App(): JSX.Element {
-  const [DB, setDB] = useState<DB>()
+  const [data, setData] = useState<TimeData>()
   const [date, setDate] = useState<TimeRange>(TimeRange.Today)
   const [isUpdating, setIsUpdating] = useState<boolean>(false)
   const handleChange = (event: SelectChangeEvent): void => {
     setDate(event.target.value as TimeRange)
   }
   let timer: NodeJS.Timeout
-  async function getDb(): Promise<void> {
-    window.api.test().then((res) => console.log(res))
+  async function updateData(): Promise<void> {
+    // window.api.test().then((res) => console.log(res))
     const data = JSON.parse(await window.api.getData())
-    setDB(data)
+    setData(data)
   }
   useEffect(() => {
     window.api.startTracking()
-    timer = setInterval(getDb, 1000)
-    getDb()
+    timer = setInterval(updateData, 1000)
+    updateData()
     return () => {
       clearInterval(timer)
     }
@@ -53,15 +53,15 @@ function App(): JSX.Element {
   useEffect(() => {
     async function visualChange(): Promise<void> {
       setIsUpdating(true)
-      await getDb()
+      await updateData()
       setIsUpdating(false)
     }
     visualChange()
   }, [date])
-  if (!DB || DB.length === 0 || isUpdating) return <span>Loading...</span>
-  console.log(DB)
+  if (!data || data.length === 0 || isUpdating) return <span>Loading...</span>
+  console.log(data)
 
-  const selectedData = getSelectedData(DB, date)
+  const selectedData = getSelectedData(data, date)
   const selectedTimeTotal = selectedData.reduce((acc, cur) => {
     const sum = cur.processes.reduce((acc, cur) => acc + cur.seconds, 0)
     return acc + sum
@@ -70,16 +70,17 @@ function App(): JSX.Element {
   const chartDataArray = mergeObjectsIntoProcessesArray(selectedData).sort(
     (a, b) => b.seconds - a.seconds
   )
-  console.log({
-    chartDataArray,
-    selectedData,
-    amount: Object.values(chartDataArray[2].subprocesses).length
-  })
+  // console.log({
+  //   chartDataArray,
+  //   selectedData,
+  //   amount: Object.values(chartDataArray[2].subprocesses).length
+  // })
   const chartData =
     chartDataArray.length < 20
       ? [...chartDataArray, ...Array(20 - chartDataArray.length).fill({ owner: '', seconds: 0 })]
       : chartDataArray
   const averagePerDay = +(selectedTimeTotal / selectedData.length).toFixed(0)
+
   return (
     <div className="flex flex-col items-center justify-center min-h-screen p-8">
       <div className="grid self-start grid-cols-2 max-md:grid-cols-1 w-fit gap-7">
@@ -169,30 +170,131 @@ function App(): JSX.Element {
         </ResponsiveContainer>
       </div>
       <ul>
-        {chartDataArray.map(({ owner, seconds, subprocesses }) => (
-          <li className="ml-2" key={owner}>
-            <div>
-              {displayName(owner)} - {formatTime(seconds)}
-            </div>
+        {chartDataArray.map(({ owner, seconds, subprocesses }) => {
+          const browserFormattedSubprocesses = subprocesses.reduce<
             {
-              <ul>
-                {subprocesses
-                  // .filter((p) => p.seconds > 10)
-                  .sort((a, b) => b.seconds - a.seconds)
-                  .map(({ title, seconds }) => (
-                    <li className="ml-4" key={title}>
-                      {displayName(title)} - {formatTime(seconds)}
-                    </li>
-                  ))}
-              </ul>
+              seconds: number
+              title: string
+              icon?: string | undefined
+              url?: string | undefined
+              hostname?: string | undefined
+              tabs?: {
+                seconds: number
+                title: string
+                icon?: string | undefined
+                url?: string | undefined
+                hostname?: string | undefined
+              }[]
+            }[]
+          >((acc, curr) => {
+            if (curr.hostname) {
+              const sameHost = acc.find((obj) => obj.hostname === curr.hostname)
+              if (!sameHost) {
+                acc.push({
+                  seconds: curr.seconds,
+                  title: curr.hostname,
+                  icon: curr.icon,
+                  hostname: curr.hostname,
+                  tabs: [curr]
+                })
+              } else if (sameHost.tabs) {
+                if (!sameHost.icon && curr.icon) {
+                  sameHost.icon = curr.icon
+                }
+                sameHost.seconds += curr.seconds
+                sameHost.tabs.push(curr)
+              }
+            } else {
+              acc.push(curr)
             }
-          </li>
-        ))}
+            return acc
+          }, [])
+          return (
+            <li className="ml-2" key={owner}>
+              <div>
+                {displayName(owner)} - {formatTime(seconds)}
+              </div>
+              {
+                <ul className="mb-4">
+                  {browserFormattedSubprocesses
+                    // .filter((p) => p.seconds > 10)
+                    .sort((a, b) => b.seconds - a.seconds)
+                    .slice(0, 10)
+                    .map(({ title, seconds, icon, tabs }) => (
+                      <li className="list-none " key={title}>
+                        <div className="flex items-center gap-2">
+                          {icon ? (
+                            <img width={16} height={16} className="mb-2" src={icon}></img>
+                          ) : owner === 'Firefox' ? (
+                            <div className="flex items-center justify-center w-4 h-4 mb-2 font-bold bg-slate-200">
+                              ?
+                            </div>
+                          ) : (
+                            ''
+                          )}
+                          <span className="mb-2">
+                            {displayName(title)} - {formatTime(seconds)}
+                          </span>
+                        </div>
+
+                        {tabs && (
+                          <ul>
+                            {tabs
+                              .sort((a, b) => b.seconds - a.seconds)
+                              .slice(0, 10)
+                              .map(({ title, seconds }) => (
+                                <li className="flex items-center ml-4 list-none" key={title}>
+                                  <div className="h-[2px] w-4 bg-black relative">
+                                    <div className="h-6 w-[2px] bg-black absolute bottom-0"></div>
+                                  </div>
+                                  {displayName(title)} - {formatTime(seconds)}
+                                </li>
+                              ))}
+                            {tabs.length - 10 > 0 ? (
+                              <li className="flex items-center ml-4 list-none">
+                                <div className="h-[2px] w-4 bg-black relative">
+                                  <div className="h-7 w-[2px] bg-black absolute bottom-0"></div>
+                                </div>
+                                <span className="text-lg underline underline-offset-2 bold">
+                                  ...{tabs.length - 10} more which sums up to{' '}
+                                  {formatTime(
+                                    tabs.slice(10).reduce((acc, curr) => {
+                                      return acc + curr.seconds
+                                    }, 0)
+                                  )}
+                                </span>
+                              </li>
+                            ) : (
+                              ''
+                            )}
+                          </ul>
+                        )}
+                      </li>
+                    ))}
+                  {browserFormattedSubprocesses.length - 10 > 0 ? (
+                    <li className="ml-4 list-none">
+                      <span className="text-xl underline underline-offset-2 bold">
+                        ...{browserFormattedSubprocesses.length - 10} more which sums up to{' '}
+                        {formatTime(
+                          browserFormattedSubprocesses.slice(10).reduce((acc, curr) => {
+                            return acc + curr.seconds
+                          }, 0)
+                        )}
+                      </span>
+                    </li>
+                  ) : (
+                    ''
+                  )}
+                </ul>
+              }
+            </li>
+          )
+        })}
       </ul>
     </div>
   )
 }
-function mergeObjectsIntoProcessesArray(objects: DB): Process[] {
+function mergeObjectsIntoProcessesArray(objects: TimeData): Process[] {
   const combinedProcesses: Process[] = []
 
   for (const obj of objects) {
@@ -233,7 +335,7 @@ function mergeObjectsIntoProcessesArray(objects: DB): Process[] {
   console.log({ combinedProcesses })
   return combinedProcesses
 }
-function getSelectedData(data: DB, timerange: TimeRange): DB {
+function getSelectedData(data: TimeData, timerange: TimeRange): TimeData {
   const TODAY = new Date()
   const YESTERDAY = new Date(Date.now() - 86400000)
   const LAST_7_DAYS = new Date(Date.now() - 604800000)

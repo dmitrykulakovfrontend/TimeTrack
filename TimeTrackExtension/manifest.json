@@ -1,0 +1,24 @@
+{
+  "manifest_version": 2,
+  "name": "TimeTrack",
+  "version": "1.0",
+
+  "description": "An extension for TimeTrack app to see your browser spent time",
+
+  "icons": {
+    "48": "icons/placeholder_1.jpg"
+  },
+  "permissions": ["activeTab", "tabs", "webNavigation"],
+
+  "content_scripts": [
+    {
+      "matches": ["*://*/*"],
+      "js": ["timetrack.js"]
+    }
+  ],
+  "background": {
+    "scripts": ["background.js"],
+    "persistent": true,
+    "type": "module"
+  }
+}

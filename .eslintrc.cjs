@@ -39,5 +39,11 @@ module.exports = {
         '@typescript-eslint/explicit-function-return-type': 'off'
       }
     }
+  ],
+  'prettier/prettier': [
+    'error',
+    {
+      endOfLine: 'auto'
+    }
   ]
 }

@@ -38,8 +38,8 @@ if (process.contextIsolated) {
     console.error(error)
   }
 } else {
-  // @ts-ignore (define in dts)
+  // @ts-ignore (define in d.ts)
   window.electron = electronAPI
-  // @ts-ignore (define in dts)
+  // @ts-ignore (define in d.ts)
   window.api = api
 }
